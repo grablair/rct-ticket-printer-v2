@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "lib": [
+         "dom",
+         "dom.iterable",
+         "esnext",
+         "es5",
+         "es6"
+    ],
+    "target": "es2022",
+    "module": "commonjs",
+    "strictNullChecks": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["**/*.ts"]
+}

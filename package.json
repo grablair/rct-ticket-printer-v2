@@ -1,0 +1,28 @@
+{
+  "name": "ticket-printer-v2",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true
+  },
+  "scripts": {
+    "dev": "nodemon index.ts"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "canvas": "^3.1.2",
+    "express": "^5.1.0",
+    "font-face": "^2.3.4",
+    "jsdom": "^26.1.0",
+    "qr-code-styling": "^1.9.2",
+    "ts-node": "^10.9.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "nodemon": "^3.1.10",
+    "tslint": "^5.20.1",
+    "typescript": "^5.9.2"
+  }
+}
