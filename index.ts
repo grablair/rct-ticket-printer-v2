@@ -276,7 +276,6 @@ app.listen(port, () => {
 });
 
 export async function directPrint(filePath: string) {
-  return;
   // Get printer configuration
   const printerConfig = getPrinterConfig()
 
