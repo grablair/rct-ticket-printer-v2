@@ -31,7 +31,7 @@ export interface TicketRequestBody {
 export function getShowAbbreviation(showName: string): string {
   // Simple implementation - convert to lowercase and remove spaces
   // You might want to implement a more sophisticated mapping based on your needs
-  return showName.toLowerCase().replace(/\s+/g, "-").replaceAll(/[,':\.]/g, "")
+  return showName.toLowerCase().replace(/\s+/g, "-").replaceAll(/[!\?,':\.]/g, "")
 }
 
 // Font loader utility to register custom fonts
@@ -103,39 +103,45 @@ app.post("/", async (req: Request, res: Response) => {
       // Load show title image
       const showAbbrev = getShowAbbreviation(ticket.show)
 
-      const dateY = await loadImage(`img/title-images/${showAbbrev}.png`).then(async (titleImage: Image) => {
-        // Draw title image at specified coordinates (59, 45)
-        ctx.drawImage(titleImage, 59, 45)
+      // Fallback to text title
+      ctx.fillStyle = "#000000"
+      ctx.font = "500 70px HankenGrotesk"
+      ctx.textAlign = "left"
 
-        // Calculate position for date (50px below the bottom of the title image)
-        return 45 + titleImage.height + 50;
-      }).catch(() => {
-        // Fallback to text title
-        ctx.fillStyle = "#000000"
-        ctx.font = "500 70px HankenGrotesk"
-        ctx.textAlign = "left"
+      const titleText = ticket.show
+      let maxWidth = 700
+      let fontSize = 70
+      let textMetrics = ctx.measureText(titleText)
+      let textWidth = textMetrics.width
 
-        const titleText = ticket.show
-        const maxWidth = 700
-        let fontSize = 70
-        let textMetrics = ctx.measureText(titleText)
-        let textWidth = textMetrics.width
+      // Reduce font size if text is too wide
+      while (textWidth > maxWidth && fontSize > 50) {
+        fontSize -= 2
+        ctx.font = `500 ${fontSize}px HankenGrotesk`
+        textMetrics = ctx.measureText(titleText)
+        textWidth = textMetrics.width
+      }
 
-        // Reduce font size if text is too wide
-        while (textWidth > maxWidth && fontSize > 50) {
-          fontSize -= 2
-          ctx.font = `500 ${fontSize}px HankenGrotesk`
-          textMetrics = ctx.measureText(titleText)
-          textWidth = textMetrics.width
+      let textHeight = Math.abs(textMetrics.actualBoundingBoxAscent) + Math.abs(textMetrics.actualBoundingBoxDescent);
+      ctx.fillText(ticket.show, 38, 20 + fontSize, 700)
+
+      // default to set y offset for text show names
+      const dateY = 20 + fontSize + 10 + 32;
+
+      await loadImage(`img/logos/${showAbbrev}.png`).then(async (logoImage: Image) => {
+        let w, h;
+        if (logoImage.height > logoImage.width) {
+          h = 600 - 60;
+          w = logoImage.width * (h / logoImage.height);
+        } else {
+          w = 600 - 60;
+          h = logoImage.height * (w / logoImage.width);
         }
 
-        const textHeight = Math.abs(textMetrics.actualBoundingBoxAscent) + Math.abs(textMetrics.actualBoundingBoxDescent);
-        console.log(textHeight);
+        let x = 1032 - w/2;
+        let y = 600 / 2 - h/2;
 
-        ctx.fillText(ticket.show, 59, 45 + textHeight, 700)
-
-        // default to set y offset for text show names
-        return 45 + textHeight + 10 + 32;
+        ctx.drawImage(logoImage, x, y, w, h);
       });
 
       // Draw date with specified styling
@@ -145,9 +151,9 @@ app.post("/", async (req: Request, res: Response) => {
 
       // Handle text wrapping if needed
       const dateText = ticket.dateTime
-      const maxWidth = 700
-      let fontSize = 32
-      let textWidth = ctx.measureText(dateText).width
+      maxWidth = 700
+      fontSize = 32
+      textWidth = ctx.measureText(dateText).width
 
       // Reduce font size if text is too wide
       while (textWidth > maxWidth && fontSize > 12) {
@@ -156,7 +162,15 @@ app.post("/", async (req: Request, res: Response) => {
         textWidth = ctx.measureText(dateText).width
       }
 
-      ctx.fillText(dateText, 59, dateY, maxWidth)
+      ctx.fillText(dateText, 38, dateY, maxWidth)
+      let contactAndLocationText = "Renton Civic Theatre\n507 S Third St, Renton, WA 98507\nboxoffice@rentoncivictheatre.org | (425) 226-5529";
+
+      ctx.font = `350 26px HankenGrotesk`;
+
+      textMetrics = ctx.measureText(contactAndLocationText)
+      textHeight = Math.abs(textMetrics.actualBoundingBoxAscent) + Math.abs(textMetrics.actualBoundingBoxDescent);
+
+      ctx.fillText(contactAndLocationText, 38, 268 - textHeight + 10, 700);
 
       // Draw attendee name
       ctx.fillStyle = "#FFFFFF" // White text
@@ -176,19 +190,19 @@ app.post("/", async (req: Request, res: Response) => {
         nameTextWidth = ctx.measureText(nameText).width
       }
 
-      ctx.fillText(nameText, 372, 307, nameMaxWidth)
+      ctx.fillText(nameText, 372 - 19, 307 + 25, nameMaxWidth)
 
       // Draw section
       ctx.fillStyle = "#000000" // Black text
       ctx.font = "500 70px HankenGrotesk"
       ctx.textAlign = "center"
-      ctx.fillText(ticket.section, 187, 490)
+      ctx.fillText(ticket.section, 187 - 19, 490 + 25)
 
       // Draw row
-      ctx.fillText(ticket.row, 402, 490)
+      ctx.fillText(ticket.row, 402 - 19, 490 + 25)
 
       // Draw seat
-      ctx.fillText(ticket.seat, 589, 490)
+      ctx.fillText(ticket.seat, 589 - 19, 490 + 25)
 
       // Special note for subscribers with GA section
       if (ticket.isSubscriber && ticket.section === "GA") {
@@ -211,14 +225,14 @@ app.post("/", async (req: Request, res: Response) => {
         ctx.fillStyle = "#000000"
         ctx.font = "350 25px HankenGrotesk"
         ctx.textAlign = "center"
-        ctx.fillText("Thank you for being a subscriber!", 372, 570)
+        ctx.fillText("Thank you for being a subscriber!", 372 - 19, 570 + 18)
       }
 
       // Draw QR code
       const qrDataUrl = await generateQRCode({
         data: ticket.ticketId,
-        width: 477,
-        height: 477,
+        width: 180,
+        height: 180,
         dotsOptions: {
           color: "#000000",
           type: "rounded",
@@ -231,7 +245,14 @@ app.post("/", async (req: Request, res: Response) => {
 
       loadImage(qrDataUrl).then(async (qrImage: Image) => {
         const outputFilepath = `./img/generated-tickets/${ticket.ticketId}.png`;
-        ctx.drawImage(qrImage, 811, 60, 477, 477)
+        ctx.drawImage(qrImage, 1650 - 40 - 180, 600 - 40 - 180, 180, 180)
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.translate(1650-40-180-20, 600-40-180/2)
+        ctx.rotate(-90 * Math.PI / 180);
+        ctx.font = "350 37px HankenGrotesk"
+        ctx.fillText(ticket.ticketId, 0, 0, 170)
 
         const out = createWriteStream(outputFilepath);
         const stream = canvas.createPNGStream();
@@ -255,6 +276,7 @@ app.listen(port, () => {
 });
 
 export async function directPrint(filePath: string) {
+  return;
   // Get printer configuration
   const printerConfig = getPrinterConfig()
 
