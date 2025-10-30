@@ -8,6 +8,7 @@ import path from "path"
 import { exec } from "child_process"
 import { promisify } from "util"
 import { getPrinterConfig } from "./lib/ticket-printer.ts"
+import crypto from 'crypto';
 
 const execPromise = promisify(exec)
 
@@ -57,6 +58,15 @@ const app = express();
 const port = 3000;
 
 app.use(express.json());
+
+// ----- CONFIG (localhost server secrets) -----
+const SKIP_PRINTING = process.env.SKIP_PRINTING;
+const SQUARE_ACCESS_TOKEN = process.env.SQUARE_ACCESS_TOKEN; // put your prod or sandbox token in env
+const SQUARE_VERSION = '2025-10-16';
+const TERMINAL_BASE_URL = 'https://connect.squareup.com/v2/terminals/checkouts';
+
+// hardcode or config this to the paired terminal for the box office
+const DEVICE_ID = process.env.DEVICE_ID ?? '521WS21606002977';
 
 app.get("/", (req: Request, res: Response) => {
   res.send(`
@@ -271,11 +281,124 @@ app.post("/", async (req: Request, res: Response) => {
   res.send("OK")
 });
 
+// ----- NEW: CREATE TERMINAL CHECKOUT -----
+app.post('/square/checkout', async (req, res) => {
+  try {
+    const { amountCents, note } = req.body;
+
+    const payload = {
+      idempotency_key: crypto.randomUUID(),
+      checkout: {
+        amount_money: {
+          amount: amountCents,
+          currency: 'USD'
+        },
+        device_options: {
+          device_id: DEVICE_ID
+        },
+        note: note || ''
+      }
+    };
+
+    const sqResp = await fetch(TERMINAL_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Square-Version': SQUARE_VERSION,
+        'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const sqData = await sqResp.json();
+
+    if (!sqResp.ok) {
+      console.error('Square create checkout error:', sqData);
+      return res.status(500).json({
+        error: 'SQUARE_CREATE_FAILED',
+        detail: sqData
+      });
+    }
+
+    const checkoutId = sqData.checkout.id;
+    res.json({ checkoutId });
+
+  } catch (err) {
+    console.error('server /square/checkout exception:', err);
+    res.status(500).json({ error: 'SERVER_ERROR' });
+  }
+});
+
+// ----- NEW: POLL CHECKOUT STATUS -----
+app.get('/square/checkout-status/:checkoutId', async (req, res) => {
+  try {
+    const { checkoutId } = req.params;
+
+    const sqResp = await fetch(`${TERMINAL_BASE_URL}/${checkoutId}`, {
+      method: 'GET',
+      headers: {
+        'Square-Version': SQUARE_VERSION,
+        'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const sqData = await sqResp.json();
+
+    if (!sqResp.ok) {
+      console.error('Square status error:', sqData);
+      return res.status(500).json({
+        error: 'SQUARE_STATUS_FAILED',
+        detail: sqData
+      });
+    }
+
+    const checkout = sqData.checkout;
+    const status = checkout.status;
+
+    const successStatuses = ['COMPLETED', 'SUCCEEDED', 'PAID'];
+    const pendingStatuses = ['PENDING', 'IN_PROGRESS'];
+
+    let success = false;
+    let final = false;
+
+    if (successStatuses.includes(status)) {
+      success = true;
+      final = true;
+    } else if (pendingStatuses.includes(status)) {
+      success = false;
+      final = false;
+    } else {
+      // canceled / timeout / failed
+      success = false;
+      final = true;
+    }
+
+    res.json({
+      checkoutId,
+      status,
+      success,
+      final
+    });
+
+  } catch (err) {
+    console.error('server /square/checkout-status exception:', err);
+    res.status(500).json({ error: 'SERVER_ERROR' });
+  }
+});
+
 app.listen(port, () => {
-  console.log(`Ticket printer server listening on ${port}`);
+  console.log(`RCT Box office server listening on ${port}`);
+  console.log(`Device ID: ${DEVICE_ID}`);
+  console.log(`Printing?: ${!SKIP_PRINTING}`);
 });
 
 export async function directPrint(filePath: string) {
+  if (SKIP_PRINTING) {
+    console.log("Skipping actual printing");
+    return;
+  }
+
   // Get printer configuration
   const printerConfig = getPrinterConfig()
 
